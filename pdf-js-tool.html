@@ -21,6 +21,13 @@
 	form.disable, form.disable * {
 		cursor: wait;
 	}
+	/* fix input[type=file] cursor: wait not work on complex element
+	 * https://www.quirksmode.org/dom/inputfile.html
+	 */
+	form.disable input[type=file] {
+		position: relative;
+		z-index: -1;
+	}
 	</style>
 </head>
   <body>
@@ -90,6 +97,7 @@
 
     <script src="pdf-js-tool_files/pdf-lib.min.js"></script>
     <script src="pdf-js-tool_files/download.js"></script>
+    <script src="pdf-js-tool_files/pako.js"></script>
     <script src="pdf-js-tool_files/UTIF.js"></script>
   <script>
     "use strict"
