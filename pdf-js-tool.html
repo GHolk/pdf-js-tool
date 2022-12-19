@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html class="TridactylThemeShydactyl"><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+<title>pdf-lib browser tool</title>
+	<style>
+	textarea {
+		display: block;
+		width: 100%;
+		height: 10em;
+	}
+	label {
+		display: block;
+	}
+	form ol:empty:before {
+		content: 'nothing in the list';
+	}
+	form button {
+		/* cursor: grab; */
+	}
+	</style>
+</head>
+  <body>
+  <h1>pdf-lib browser tool</h1>
+	<form id="pdf-arrange"
+		onreset="pdfTool.handleUpdate(); return false"
+		ondragover="pdfTool.handleDragOver()"
+		ondrop="pdfTool.handleDrop()">
+	<h2>rearrange pdf files</h2>
+	<h3>pdf list</h3>
+	<ol start="0"></ol>
+
+	<textarea name="range"
+		oninput="pdfTool.handleTextareaUpdate()">[[]]</textarea>
+	
+    <label>input file:
+		<input oninput="pdfTool.handleAdd()"
+			type="file" multiple name="pdf-list"></label>
+	<label><input type="checkbox" name="jpeg-compress" disabled>use jpg lossy compression. prevent the output pdf much larger than original tiff</label>
+	<input type="reset">
+    <button type="button" draggable="true"
+		onclick="pdfTool.handleArrange()"
+		ondragstart="return false; // pdfTool.handleDragDownload()">
+	arrange pdf</button>
+ </form>
+ <h2>example</h2>
+ <p>given:</p>
+ <ol start="0">
+ <li>header.pdf</li>
+ <li>body.pdf</li>
+ <li>introduction.pdf</li>
+ <li>external.pdf</li>
+ </ol>
+ <pre><code>[
+   [0, 2, 1, 2],
+   
+   [0, 3],
+   [1, 2, 3],
+   [10],
+   [0, 0, 0]
+]</code></pre>
+ <p>will produce a pdf containing
+ <em>p1 and p4 of header.pdf</em>,
+ <em>p2, p3 and p4 of introduction.pdf</em>,
+ <em>p11 of body.pdf</em> and
+ <em>p1 of introduction.pdf 3 times</em>.
+ the external.pdf will not appear in the output
+ because its index does not included in the first list.
+ </p>
+ 
+ <p>the format is in json, and spaces are mostly ignored.</p>
+
+<h2>todo</h2>
+<ul><li><input type="checkbox" checked disabled> drop in</li>
+<li><input type="checkbox" disabled> and drag out <ins>(firefox does not support)</ins></li>
+<li><input type="checkbox" checked disabled> append no replace</li>
+<li><input type="checkbox" checked disabled> support jpg png</li>
+<li><input type="checkbox" disabled> support tiff gif</li>
+</ul>
+
+    <script src="pdf-js-tool_files/pdf-lib.min.js"></script>
+    <script src="pdf-js-tool_files/download.js"></script>
+    <script src="pdf-js-tool_files/UTIF.js"></script>
+  <script>
+    "use strict"
+    const { PDFDocument } = PDFLib
+	const UTIF = window.UTIF
+
+	class PdfTool {
+		constructor() {
+			this._constructor()
+		}
+		_constructor() {
+			this.pdfList = []
+			this.form = document.getElementById('pdf-arrange')
+			this.PDFLib = PDFLib
+			this.pageSize = 'A4'
+			this.UTIF = UTIF
+			this.canvas = document.createElement('canvas')
+		}
+		sleep(second) {
+			return new Promise(wake => setTimeout(wake, second * 1000))
+		}
+		async tiffToPng(buffer) {
+			const ifds = this.UTIF.decode(buffer)
+			const canvas = this.canvas
+			const ctx = canvas.getContext('2d')
+			const UTIF = this.UTIF
+
+			const pngList = []
+			let lock = Promise.resolve(true)
+			for (let i=0; i<ifds.length; i++) {
+				const ifd = ifds[i]
+				UTIF.decodeImage(buffer, ifd, ifds)
+				const rgba = UTIF.toRGBA8(ifd)
+
+				canvas.width = ifd.width
+				canvas.height = ifd.height
+				const data = new ImageData(
+					new Uint8ClampedArray(rgba.buffer),
+					ifd.width, ifd.height
+				)
+				ctx.putImageData(data, 0, 0)
+				await lock
+				lock = new Promise(ok => canvas.toBlob(async blob => {
+					pngList.push(await blob.arrayBuffer())
+					ok()
+				}))
+			}
+			await lock
+			return pngList
+		}
+		test(q) {
+			if (!this.img) {
+				this.img = document.createElement('img')
+				document.body.appendChild(this.img)
+			}
+			const canvas = this.canvas
+			const ctx = canvas.getContext('2d')
+			ctx.putImageData(this.imgd28, 0, 0)
+			canvas.toBlob(jpeg => {
+				this.img.onload = () => {
+					ctx.drawImage(this.img, 0, 0)
+					this.jpeg = jpeg
+					const imgd2 = this.imgd2 = ctx.getImageData(
+						0, 0, canvas.width, canvas.height
+					)
+					this.diff = this.imgd28.data.map(
+						(x, i) => (x - imgd2.data[i])**2
+					)
+					console.log(this.diff.every(x => x == 0))
+				}
+				
+				this.img.src = URL.createObjectURL(jpeg)
+			}, 'image/jpeg', q)
+		}
+		async imageToPdf(file) {
+			const pdf = await this.PDFLib.PDFDocument.create()
+			const size = this.PDFLib.PageSizes[this.pageSize]
+			const buffer = await file.arrayBuffer()
+			let embed
+			if (file.type == 'image/jpeg') {
+				embed = await pdf.embedJpg(buffer)
+			}
+			else if (file.type == 'image/png') {
+				embed = await pdf.embedPng(buffer)
+			}
+			else if (file.type == 'image/tiff') {
+				const pngList = await this.tiffToPng(buffer)
+				console.log(pngList.length)
+				const embedListWait = pngList.map(
+					buf => pdf.embedPng(buf)
+				)
+				const embedList = await Promise.all(embedListWait)
+				embedList.forEach(embed => {
+					const scale = embed.scaleToFit(...size)
+					const page = pdf.addPage(size)
+					page.drawImage(embed, scale)
+				})
+				return pdf
+			}
+			else throw new Error('file type not support')
+			
+			const scale = embed.scaleToFit(...size)
+			const page = pdf.addPage(size)
+			page.drawImage(embed, scale)
+			return pdf
+		}
+		async addFile(file) {
+			let pdf
+			if (file.type.slice(0, 5) == 'image') {
+				pdf = await this.imageToPdf(file)
+			}
+			else {
+				const buffer = await file.arrayBuffer()
+				pdf = await this.PDFLib.PDFDocument.load(buffer, {
+					ignoreEncryption: true
+				})
+			}
+			if (pdf.isEncrypted) {
+				const message = `pdf ${file.name} is encrypted, not loaded`
+				alert(message)
+				const e = new TypeError(message)
+				e.id = 'pdf-lib-tool-pdf-is-encrypted'
+				throw e
+			}
+			return this.pdfList.push(pdf)
+		}
+		async handleAdd() {
+			const field = this.form.elements['pdf-list']
+			const list = this.form.querySelector('ol')
+			for (const file of field.files) {
+				await this.addFile(file)
+				const item = document.createElement('li')
+				item.textContent = file.name
+				list.appendChild(item)
+			}
+			
+			const range = await this.getRangeAll()
+			const textarea = this.form.elements['range']
+			let json
+			try {
+				json = JSON.parse(textarea.value)
+			}
+			catch (parseError) {
+				json = null
+			}
+			
+			if (json) {
+				while (json[0].length > json.length-1) {
+					json.push([])
+				}
+				const newPdfCount = field.files.length
+				json[0].push(...range[0].slice(-newPdfCount))
+				json.push(...range.slice(-newPdfCount))
+				textarea.value = this.prettyRange(json)
+				this.handleTextareaUpdate()
+			}
+		}
+		async handleUpdate() {
+			const field = this.form.elements['range']
+			const range = await this.getRangeAll()
+			const pretty = this.prettyRange(range)
+			field.value = pretty
+			
+			this.handleTextareaUpdate()
+		}
+		prettyRange(json) {
+			let pretty = json.map(l => JSON.stringify(l))
+			pretty = pretty.join(',\n').replace(/^/mg, '\t')
+			pretty = `[\n${pretty}\n]`
+			return pretty
+		}
+		handleTextareaUpdate() {
+			const field = this.form.elements['range']
+			if (field.clientHeight < field.scrollHeight) {
+				field.style.height = field.scrollHeight + 'px'
+			}
+		}
+		async getRangeAll() {
+			const docIndex = this.pdfList.map((x, i) => i)
+			const pageIndex = await Promise.all(
+				this.pdfList.map(doc => doc.getPageIndices())
+			)
+			return [docIndex].concat(pageIndex)
+		}
+		async handleArrange() {
+			const pdf = await this.arrange()
+			download(pdf, "arrange.pdf", "application/pdf")
+		}
+		async arrange() {
+			const json = this.form.elements['range'].value
+			const range = JSON.parse(json)
+			const docRange = range[0]
+			const pageRangeList = range.slice(1)
+			const all = await this.PDFLib.PDFDocument.create()
+			for (let i=0; i<docRange.length; i++) {
+				const doc = this.pdfList[docRange[i]]
+				const pageRange = pageRangeList[i]
+				const pageList = await all.copyPages(doc, pageRange)
+				for (const page of pageList) all.addPage(page)
+			}
+			const buffer = await all.save()
+			return buffer
+		}
+		handleDragOver() {
+			if (event.target.nodeName == 'TEXTAREA') return
+			const data = event.dataTransfer
+			if (~data.types.indexOf('Files')) {
+				event.preventDefault()
+				data.dropEffect = 'copy'
+			}
+		}
+		handleDrop() {
+			if (event.target.nodeName == 'TEXTAREA') return
+			event.preventDefault()
+			const files = event.dataTransfer.files
+			this.form.elements['pdf-list'].files = files
+			this.handleAdd()
+		}
+		async handleDragDownload() {
+			const data = event.dataTransfer
+			// data.effectAllowed = 'copy'
+			if (this.url) return data.setData('DownloadURL', this.url)
+			const buffer = await this.arrange()
+			const pdf = new File([buffer], 'arrange.pdf', {
+				type: 'application/pdf'
+			})
+			data.setData('application/pdf', pdf)
+		}
+	}
+	var pdfTool = new PdfTool()
+  </script>
+</body></html>
