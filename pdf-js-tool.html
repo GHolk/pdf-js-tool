@@ -18,14 +18,17 @@
 	form button {
 		/* cursor: grab; */
 	}
+	form.disable, form.disable * {
+		cursor: wait;
+	}
 	</style>
 </head>
   <body>
   <h1>pdf-lib browser tool</h1>
 	<form id="pdf-arrange"
 		onreset="pdfTool.handleUpdate(); return false"
-		ondragover="pdfTool.handleDragOver()"
-		ondrop="pdfTool.handleDrop()">
+		ondragover="pdfTool.handleDragOver(event)"
+		ondrop="pdfTool.handleFormDisableWith('handleDrop', event)">
 	<h2>rearrange pdf files</h2>
 	<h3>pdf list</h3>
 	<ol start="0"></ol>
@@ -34,11 +37,15 @@
 		oninput="pdfTool.handleTextareaUpdate()">[[]]</textarea>
 	
     <label>input file:
-		<input oninput="pdfTool.handleAdd()"
+		<input oninput="pdfTool.handleFormDisableWith('handleAdd', event)"
 			type="file" multiple name="pdf-list"></label>
+	<label><input type="checkbox" name="jpeg-compress"
+	onchange="pdfTool.formUseLossyJpeg = this.checked">
+	use jpg lossy compression when loading tiff.
+	prevent the output pdf much larger than original tiff</label>
 	<input type="reset">
     <button type="button" draggable="true"
-		onclick="pdfTool.handleArrange()"
+		onclick="pdfTool.handleFormDisableWith('handleArrange', event)"
 		ondragstart="return false; // pdfTool.handleDragDownload()">
 	arrange pdf</button>
  </form>
@@ -73,20 +80,19 @@
 <ul><li><input type="checkbox" checked disabled> drop in</li>
 <li><input type="checkbox" disabled> and drag out <ins>(firefox does not support)</ins></li>
 <li><input type="checkbox" checked disabled> append no replace</li>
-<li><input type="checkbox" checked disabled> support jpg png</li>
-<li><input type="checkbox" disabled> support tiff gif</li>
+<li><input type="checkbox" checked disabled> support jpg png tiff</li>
+<li><input type="checkbox" disabled> support gif</li>
+<li><input type="checkbox" checked disabled> loading ui effect (cursor)</li>
+<li><input type="checkbox" disabled> loading ui effect (meter)</li>
+<li><input type="checkbox" checked disabled> optional jpeg lossy compressiong</li>
+<li><input type="checkbox" checked disabled> auto orientation</li>
 </ul>
 
     <script src="pdf-js-tool_files/pdf-lib.min.js"></script>
     <script src="pdf-js-tool_files/download.js"></script>
     <script src="pdf-js-tool_files/UTIF.js"></script>
-	<script src="pdf-js-tool_files/UZIP.js"></script>
-	<script src="pdf-js-tool_files/UPNG.js"></script>
-	<script src="pdf-js-tool_files/pako.js"></script>
   <script>
     "use strict"
-    const { PDFDocument } = PDFLib
-	const UTIF = window.UTIF
 
 	class PdfTool {
 		constructor() {
@@ -98,33 +104,105 @@
 			this.PDFLib = PDFLib
 			this.pageSize = 'A4'
 			this.UTIF = UTIF
-			this.UPNG = UPNG
+			this.canvas = document.createElement('canvas')
+			this.formUseLossyJpeg = 
+				this.form.elements['jpeg-compress'].checked
 		}
 		sleep(second) {
 			return new Promise(wake => setTimeout(wake, second * 1000))
 		}
-		tiffToPng(buffer) {
+		isTiffJpeg(ifd) {
+			// memic when will UTIF.js decode data as jpeg
+			const img = ifd
+			const cmpr = img["t259"] ? img["t259"][0] : 1
+			switch (cmpr) {
+			case 6: // old jpeg
+			case 7:	case 34892: // new jpeg
+			case 32767: // arw, seem to be jpeg too?
+				return true
+			default:
+				return false
+			}
+		}
+		async tiffToImage(buffer) {
 			const ifds = this.UTIF.decode(buffer)
+			const canvas = this.canvas
+			const ctx = canvas.getContext('2d')
 			const UTIF = this.UTIF
-			const UPNG = this.UPNG
 
-			const pngList = []
+			const imageList = []
+			let lock = Promise.resolve(true)
 			for (let i=0; i<ifds.length; i++) {
 				const ifd = ifds[i]
 				UTIF.decodeImage(buffer, ifd, ifds)
 				const rgba = UTIF.toRGBA8(ifd)
-				
-				const png = UPNG.encode(
-					[rgba], ifd.width, ifd.height, 0
+
+				canvas.width = ifd.width
+				canvas.height = ifd.height
+				const data = new ImageData(
+					new Uint8ClampedArray(rgba.buffer),
+					ifd.width, ifd.height
 				)
-				pngList.push(png)
+				ctx.putImageData(data, 0, 0)
+				
+				const isJpeg = this.isTiffJpeg(ifd)
+				const useJpegCompress = isJpeg && this.formUseLossyJpeg
+				let canvasOption
+				if (useJpegCompress) canvasOption = ['image/jpeg', 1]
+				else canvasOption = ['image/png']
+				
+				await lock
+				lock = new Promise(ok => canvas.toBlob(async blob => {
+					const buffer = await blob.arrayBuffer()
+					imageList.push({buffer, type: canvasOption[0]})
+					ok()
+				}, ...canvasOption))
 			}
-			return pngList
+			await lock
+			return imageList
+		}
+		test(q) {
+			if (!this.img) {
+				this.img = document.createElement('img')
+				document.body.appendChild(this.img)
+			}
+			const canvas = this.canvas
+			const ctx = canvas.getContext('2d')
+			ctx.putImageData(this.imgd28, 0, 0)
+			canvas.toBlob(jpeg => {
+				this.img.onload = () => {
+					ctx.drawImage(this.img, 0, 0)
+					this.jpeg = jpeg
+					const imgd2 = this.imgd2 = ctx.getImageData(
+						0, 0, canvas.width, canvas.height
+					)
+					this.diff = this.imgd28.data.map(
+						(x, i) => (x - imgd2.data[i])**2
+					)
+					console.log(this.diff.every(x => x == 0))
+				}
+				
+				this.img.src = URL.createObjectURL(jpeg)
+			}, 'image/jpeg', q)
 		}
 		async imageToPdf(file) {
 			const pdf = await this.PDFLib.PDFDocument.create()
 			const size = this.PDFLib.PageSizes[this.pageSize]
 			const buffer = await file.arrayBuffer()
+			if (file.type == 'image/tiff') {
+				const imageList = await this.tiffToImage(buffer)
+				const embedListWait = imageList.map(
+					image => image.type == 'image/png' ?
+						pdf.embedPng(image.buffer) :
+						pdf.embedJpg(image.buffer)
+				)
+				const embedList = await Promise.all(embedListWait)
+				embedList.forEach(
+					embed => this.addImagePage(embed, pdf, size)
+				)
+				return pdf
+			}
+
 			let embed
 			if (file.type == 'image/jpeg') {
 				embed = await pdf.embedJpg(buffer)
@@ -132,26 +210,38 @@
 			else if (file.type == 'image/png') {
 				embed = await pdf.embedPng(buffer)
 			}
-			else if (file.type == 'image/tiff') {
-				const pngList = this.tiffToPng(buffer)
-				console.log(pngList.length)
-				const embedListWait = pngList.map(
-					buf => pdf.embedPng(buf)
-				)
-				const embedList = await Promise.all(embedListWait)
-				embedList.forEach(embed => {
-					const scale = embed.scaleToFit(...size)
-					const page = pdf.addPage(size)
-					page.drawImage(embed, scale)
-				})
-				return pdf
+			else {
+				const png = await this.imageToPng(file)
+				embed = await pdf.embedPng(png)
 			}
-			else throw new Error('file type not support')
-			
+
+			this.addImagePage(embed, pdf, size)
+			return pdf
+		}
+		addImagePage(embed, pdf, size) {
+			if (embed.width > size[0] && embed.width > embed.height) {
+				size = size.slice().reverse()
+			}
 			const scale = embed.scaleToFit(...size)
 			const page = pdf.addPage(size)
 			page.drawImage(embed, scale)
-			return pdf
+		}
+		imageToPng(blob) {
+			return new Promise(ok => {
+				const image = new Image()
+				image.onload = () => {
+					const canvas = this.canvas
+					canvas.width = image.width
+					canvas.height = image.height
+					const ctx = canvas.getContext('2d')
+					ctx.drawImage(image, 0, 0)
+					canvas.toBlob(
+						blob => blob.arrayBuffer().then(ok),
+						'image/png'
+					)
+				}
+				image.src = URL.createObjectURL(blob)
+			})
 		}
 		async addFile(file) {
 			let pdf
@@ -172,6 +262,28 @@
 				throw e
 			}
 			return this.pdfList.push(pdf)
+		}
+		formToggleEnable(enable) {
+			if (!enable) this.form.classList.add('disable')
+			else this.form.classList.remove('disable')
+			for (const input of this.form.elements) {
+				input.disabled = !enable
+			}
+		}
+		async handleFormDisableWith(method, ...args) {
+			this.formToggleEnable(false)
+			try {
+				return await Promise.resolve(
+					this[method](...args)
+				)
+			}
+			catch (error) {
+				alert(String(error))
+				throw error
+			}
+			finally {
+				this.formToggleEnable(true)
+			}
 		}
 		async handleAdd() {
 			const field = this.form.elements['pdf-list']
@@ -232,6 +344,7 @@
 			return [docIndex].concat(pageIndex)
 		}
 		async handleArrange() {
+			await this.sleep(0.1) // prevent js block css change
 			const pdf = await this.arrange()
 			download(pdf, "arrange.pdf", "application/pdf")
 		}
@@ -250,7 +363,7 @@
 			const buffer = await all.save()
 			return buffer
 		}
-		handleDragOver() {
+		handleDragOver(event) {
 			if (event.target.nodeName == 'TEXTAREA') return
 			const data = event.dataTransfer
 			if (~data.types.indexOf('Files')) {
@@ -258,14 +371,14 @@
 				data.dropEffect = 'copy'
 			}
 		}
-		handleDrop() {
+		handleDrop(event) {
 			if (event.target.nodeName == 'TEXTAREA') return
 			event.preventDefault()
 			const files = event.dataTransfer.files
 			this.form.elements['pdf-list'].files = files
-			this.handleAdd()
+			return this.handleAdd()
 		}
-		async handleDragDownload() {
+		async handleDragDownload(event) {
 			const data = event.dataTransfer
 			// data.effectAllowed = 'copy'
 			if (this.url) return data.setData('DownloadURL', this.url)
