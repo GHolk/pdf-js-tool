@@ -36,7 +36,6 @@
     <label>input file:
 		<input oninput="pdfTool.handleAdd()"
 			type="file" multiple name="pdf-list"></label>
-	<label><input type="checkbox" name="jpeg-compress" disabled>use jpg lossy compression. prevent the output pdf much larger than original tiff</label>
 	<input type="reset">
     <button type="button" draggable="true"
 		onclick="pdfTool.handleArrange()"
@@ -81,6 +80,9 @@
     <script src="pdf-js-tool_files/pdf-lib.min.js"></script>
     <script src="pdf-js-tool_files/download.js"></script>
     <script src="pdf-js-tool_files/UTIF.js"></script>
+	<script src="pdf-js-tool_files/UZIP.js"></script>
+	<script src="pdf-js-tool_files/UPNG.js"></script>
+	<script src="pdf-js-tool_files/pako.js"></script>
   <script>
     "use strict"
     const { PDFDocument } = PDFLib
@@ -96,63 +98,28 @@
 			this.PDFLib = PDFLib
 			this.pageSize = 'A4'
 			this.UTIF = UTIF
-			this.canvas = document.createElement('canvas')
+			this.UPNG = UPNG
 		}
 		sleep(second) {
 			return new Promise(wake => setTimeout(wake, second * 1000))
 		}
-		async tiffToPng(buffer) {
+		tiffToPng(buffer) {
 			const ifds = this.UTIF.decode(buffer)
-			const canvas = this.canvas
-			const ctx = canvas.getContext('2d')
 			const UTIF = this.UTIF
+			const UPNG = this.UPNG
 
 			const pngList = []
-			let lock = Promise.resolve(true)
 			for (let i=0; i<ifds.length; i++) {
 				const ifd = ifds[i]
 				UTIF.decodeImage(buffer, ifd, ifds)
 				const rgba = UTIF.toRGBA8(ifd)
-
-				canvas.width = ifd.width
-				canvas.height = ifd.height
-				const data = new ImageData(
-					new Uint8ClampedArray(rgba.buffer),
-					ifd.width, ifd.height
-				)
-				ctx.putImageData(data, 0, 0)
-				await lock
-				lock = new Promise(ok => canvas.toBlob(async blob => {
-					pngList.push(await blob.arrayBuffer())
-					ok()
-				}))
-			}
-			await lock
-			return pngList
-		}
-		test(q) {
-			if (!this.img) {
-				this.img = document.createElement('img')
-				document.body.appendChild(this.img)
-			}
-			const canvas = this.canvas
-			const ctx = canvas.getContext('2d')
-			ctx.putImageData(this.imgd28, 0, 0)
-			canvas.toBlob(jpeg => {
-				this.img.onload = () => {
-					ctx.drawImage(this.img, 0, 0)
-					this.jpeg = jpeg
-					const imgd2 = this.imgd2 = ctx.getImageData(
-						0, 0, canvas.width, canvas.height
-					)
-					this.diff = this.imgd28.data.map(
-						(x, i) => (x - imgd2.data[i])**2
-					)
-					console.log(this.diff.every(x => x == 0))
-				}
 				
-				this.img.src = URL.createObjectURL(jpeg)
-			}, 'image/jpeg', q)
+				const png = UPNG.encode(
+					[rgba], ifd.width, ifd.height, 0
+				)
+				pngList.push(png)
+			}
+			return pngList
 		}
 		async imageToPdf(file) {
 			const pdf = await this.PDFLib.PDFDocument.create()
@@ -166,7 +133,7 @@
 				embed = await pdf.embedPng(buffer)
 			}
 			else if (file.type == 'image/tiff') {
-				const pngList = await this.tiffToPng(buffer)
+				const pngList = this.tiffToPng(buffer)
 				console.log(pngList.length)
 				const embedListWait = pngList.map(
 					buf => pdf.embedPng(buf)
