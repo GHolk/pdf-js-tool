@@ -28,6 +28,9 @@
 		position: relative;
 		z-index: -1;
 	}
+	form a:not([href]) {
+		display: none;
+	}
 	</style>
 </head>
   <body>
@@ -52,10 +55,11 @@
 	use jpg lossy compression when loading tiff.
 	prevent the output pdf much larger than original tiff</label>
 	<input type="reset">
-    <button type="button" draggable="true"
-		onclick="pdfTool.handleFormDisableWith('handleArrange')"
+	<button type="button" draggable="true"
+		onclick="pdfTool.handleFormDisableWith('handleArrange', event)"
 		ondragstart="return false; // pdfTool.handleDragDownload()">
-	arrange pdf</button>
+		arrange pdf</button>
+	<a id="pdf-link" target="_blank">pdf link</a>
  </form>
  <h2>example</h2>
  <p>given:</p>
@@ -102,7 +106,6 @@
 </ul>
 
     <script src="pdf-js-tool_files/pdf-lib.min.js"></script>
-    <script src="pdf-js-tool_files/download.js"></script>
     <script src="pdf-js-tool_files/pako.js"></script>
     <script src="pdf-js-tool_files/UTIF.js"></script>
   <script>
@@ -364,10 +367,19 @@
 			)
 			return [docIndex].concat(pageIndex)
 		}
-		async handleArrange() {
+		async handleArrange(event) {
 			await this.sleep(0.1) // prevent js block css change
 			const pdf = await this.arrange()
-			download(pdf, "arrange.pdf", "application/pdf")
+			const file = new File([pdf.buffer], 'arrange.pdf', {
+				type: 'application/pdf'
+			})
+			const url = URL.createObjectURL(file)
+			const anchor = document.getElementById('pdf-link')
+			if (anchor.href.slice(0, 5) == 'blob:') {
+				URL.revokeObjectURL(anchor.href)
+			}
+			anchor.href = url
+			anchor.click()
 		}
 		async arrange() {
 			const json = this.form.elements['range'].value
