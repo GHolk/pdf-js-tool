@@ -60,6 +60,16 @@
 		ondragstart="return false; // pdfTool.handleDragDownload()">
 		arrange pdf</button>
 	<a id="pdf-link" target="_blank">pdf link</a>
+
+	<h3>page processing script</h3>
+	<textarea name="page-processing">
+// arguments = [page: pdfPage, ref: [docIndex, pageIndex], doc: resultDoc]
+
+// if (page.getWidth() > page.getHeight()) page.setRotation(PDFLib.degrees(90))
+// if (ref[0] == 1) page.setRotation(PDFLib.degrees(90))
+// if (ref == '1,1') page.setRotation(PDFLib.degrees(90))
+
+</textarea>
  </form>
  <h2>example</h2>
  <p>given:</p>
@@ -387,14 +397,24 @@
 			const docRange = range[0]
 			const pageRangeList = range.slice(1)
 			const all = await this.PDFLib.PDFDocument.create()
+			const pageFn = this.getPageProcessingFunction()
 			for (let i=0; i<docRange.length; i++) {
 				const doc = this.pdfList[docRange[i]]
 				const pageRange = pageRangeList[i]
 				const pageList = await all.copyPages(doc, pageRange)
-				for (const page of pageList) all.addPage(page)
+				for (let j=0; j<pageList.length; j++) {
+					const page = pageList[j]
+					pageFn(page, [i, j], doc)
+					all.addPage(page)
+				}
 			}
 			const buffer = await all.save()
 			return buffer
+		}
+		getPageProcessingFunction() {
+			const code = this.form.elements['page-processing'].value
+			const fn = new Function(['page', 'ref', 'doc'], code)
+			return fn
 		}
 		handleDragOver(event) {
 			if (event.target.nodeName == 'TEXTAREA') return
