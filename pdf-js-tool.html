@@ -50,6 +50,9 @@
     <label>input file:
 		<input oninput="pdfTool.handleFormDisableWith('handleAdd', event)"
 			type="file" multiple name="pdf-list"></label>
+	<label>tiff quality
+	<input name="tiff-quality" onchange="pdfTool.handleTiffQuality(+this.value)"
+		type="number" min="0" max="1" step="0.1" value="0.8" /></label>
 	<label><input type="checkbox" name="jpeg-compress"
 	onchange="pdfTool.formUseLossyJpeg = this.checked">
 	use jpg lossy compression when loading tiff.
@@ -118,6 +121,7 @@
     <script src="pdf-js-tool_files/pdf-lib.min.js"></script>
     <script src="pdf-js-tool_files/pako.js"></script>
     <script src="pdf-js-tool_files/UTIF.js"></script>
+  <script src="./pdf-js-tool_files/tt-logger/browser.js"></script>
   <script>
     "use strict"
 
@@ -134,6 +138,8 @@
 			this.canvas = document.createElement('canvas')
 			this.formUseLossyJpeg = 
 				this.form.elements['jpeg-compress'].checked
+			this.tiffQuality =
+				Number(this.form.elements['tiff-quality'].value)
 		}
 		sleep(second) {
 			return new Promise(wake => setTimeout(wake, second * 1000))
@@ -149,6 +155,14 @@
 				return true
 			default:
 				return false
+			}
+		}
+		handleTiffQuality(q) {
+			log `tiff-quality-change ${q}`
+			this.tiffQuality = q
+			if (!this.formUseLossyJpeg) {
+				this.formUseLossyJpeg =
+					this.form.elements['jpeg-compress'].checked = true
 			}
 		}
 		async tiffToImage(buffer) {
@@ -175,13 +189,17 @@
 				const isJpeg = this.isTiffJpeg(ifd)
 				const useJpegCompress = isJpeg && this.formUseLossyJpeg
 				let canvasOption
-				if (useJpegCompress) canvasOption = ['image/jpeg', 1]
+				if (useJpegCompress) {
+				    canvasOption = ['image/jpeg', this.tiffQuality]
+				}
 				else canvasOption = ['image/png']
 				
 				await lock
+				log `canvas-option ${i} ${canvasOption.join(' ')}`
 				lock = new Promise(ok => canvas.toBlob(async blob => {
 					const buffer = await blob.arrayBuffer()
 					imageList.push({buffer, type: canvasOption[0]})
+					log `blob-size ${i} ${blob.size}`
 					ok()
 				}, ...canvasOption))
 			}
