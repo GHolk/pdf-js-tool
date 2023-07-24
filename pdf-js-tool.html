@@ -31,6 +31,27 @@
 	form a:not([href]) {
 		display: none;
 	}
+	form output[name=log] details {
+		white-space: pre-wrap;
+		margin: 1em;
+		margin-left: 2em;
+		margin-top: 0;
+		display: block;
+	}
+	form output[name=log] details summary:before {
+		content: '... ';
+	}
+	form output[name=log] details summary {
+		list-style: none;
+		color: blue;
+		cursor: help;
+		text-decoration: underline;
+		margin-left: -1em;
+		margin-bottom: 1em;
+	}
+	form output[name=log] details summary:empty {
+		display: none;
+	}
 	</style>
 </head>
   <body>
@@ -43,7 +64,7 @@
 	<h2>rearrange pdf files</h2>
 	<h3>pdf list</h3>
 	<ol start="0"></ol>
-
+	<output name="log">logs: <details><summary title="expand logs"></summary></details></output>
 	<textarea name="range"
 		oninput="pdfTool.handleTextareaUpdate()">[[]]</textarea>
 	
@@ -59,8 +80,8 @@
 	prevent the output pdf much larger than original tiff</label>
 	<input type="reset">
 	<button type="button"
-		onclick="pdfTool.handleFormDisableWith('handleReloadLastFiles')"
-	>reload last file</button>
+		onclick="pdfTool.handleFormDisableWith('handleAdd')"
+	>re-add last files</button>
 	<button type="button" draggable="true"
 		onclick="pdfTool.handleFormDisableWith('handleArrange', event)"
 		ondragstart="return false; // pdfTool.handleDragDownload()">
@@ -132,7 +153,7 @@
 
 	ttLogger.logWrite = function (m) {
 		console.log(m)
-		pdfTool.logWriteFile(m)
+		pdfTool.logWrite(m)
 	}
 	class PdfTool {
 		constructor() {
@@ -149,15 +170,11 @@
 				this.form.elements['jpeg-compress'].checked
 			this.tiffQuality =
 				Number(this.form.elements['tiff-quality'].value)
-			this.logCache = ''
 		}
-		logWriteFile(x) {
-			if (typeof x == 'string') this.logCache += x + '\n'
-			else if (x.type == 'flush') {
-				const log = this.logCache
-				this.logCache = ''
-				return log
-			}
+		logWrite(x) {
+			const node = this.form.elements['log'].firstChild
+			node.firstChild.textContent = x
+			node.appendChild(document.createTextNode(x + '\n'))
 		}
 		sleep(second) {
 			return new Promise(wake => setTimeout(wake, second * 1000))
@@ -182,20 +199,6 @@
 				this.formUseLossyJpeg =
 					this.form.elements['jpeg-compress'].checked = true
 			}
-		}
-		handleReloadLastFiles() {
-			let fileList = this.form.elements['pdf-list'].files
-			fileList = Array.from(fileList)
-			fileList.reverse()
-			for (const f of fileList) {
-				const last = this.form.querySelector('ol>li:last-child')
-				const name = last.querySelector('summary').textContent
-				if (name == f.name) {
-					last.remove()
-					this.pdfList.pop()
-				}
-			}
-			return this.handleAdd()
 		}
 		async tiffToImage(buffer) {
 			const ifds = this.UTIF.decode(buffer)
@@ -368,14 +371,9 @@
 			const field = this.form.elements['pdf-list']
 			const list = this.form.querySelector('ol')
 			for (const file of field.files) {
-				this.logWriteFile({type: 'flush'})
 				await this.addFile(file)
 				const item = document.createElement('li')
-				item.innerHTML = 
-					`<details open><summary></summary><pre></pre></details>`
-				item.querySelector('summary').textContent = file.name
-				const p = item.querySelector('pre')
-				p.textContent = this.logWriteFile({type: 'flush'})
+				item.textContent = file.name
 				list.appendChild(item)
 			}
 			
