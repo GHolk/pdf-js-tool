@@ -38,9 +38,6 @@
 		margin-top: 0;
 		display: block;
 	}
-	form output[name=log] details summary:before {
-		content: '... ';
-	}
 	form output[name=log] details summary {
 		list-style: none;
 		color: blue;
@@ -64,7 +61,7 @@
 	<h2>rearrange pdf files</h2>
 	<h3>pdf list</h3>
 	<ol start="0"></ol>
-	<output name="log">logs: <details><summary title="expand logs"></summary></details></output>
+	<output name="log"><details><summary title="expand logs"></summary></details></output>
 	<textarea name="range"
 		oninput="pdfTool.handleTextareaUpdate()">[[]]</textarea>
 	
@@ -173,7 +170,7 @@
 		}
 		logWrite(x) {
 			const node = this.form.elements['log'].firstElementChild
-			node.firstElementChild.textContent = x
+			node.firstElementChild.textContent = 'logs: ... ' + x
 			node.appendChild(document.createTextNode(x + '\n'))
 		}
 		sleep(second) {
