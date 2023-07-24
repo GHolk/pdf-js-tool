@@ -172,8 +172,8 @@
 				Number(this.form.elements['tiff-quality'].value)
 		}
 		logWrite(x) {
-			const node = this.form.elements['log'].firstChild
-			node.firstChild.textContent = x
+			const node = this.form.elements['log'].firstElementChild
+			node.firstElementChild.textContent = x
 			node.appendChild(document.createTextNode(x + '\n'))
 		}
 		sleep(second) {
