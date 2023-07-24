@@ -58,6 +58,9 @@
 	use jpg lossy compression when loading tiff.
 	prevent the output pdf much larger than original tiff</label>
 	<input type="reset">
+	<button type="button"
+		onclick="pdfTool.handleFormDisableWith('handleReloadLastFiles')"
+	>reload last file</button>
 	<button type="button" draggable="true"
 		onclick="pdfTool.handleFormDisableWith('handleArrange', event)"
 		ondragstart="return false; // pdfTool.handleDragDownload()">
@@ -127,6 +130,10 @@
   <script>
     "use strict"
 
+	ttLogger.logWrite = function (m) {
+		console.log(m)
+		pdfTool.logWriteFile(m)
+	}
 	class PdfTool {
 		constructor() {
 			this._constructor()
@@ -142,6 +149,15 @@
 				this.form.elements['jpeg-compress'].checked
 			this.tiffQuality =
 				Number(this.form.elements['tiff-quality'].value)
+			this.logCache = ''
+		}
+		logWriteFile(x) {
+			if (typeof x == 'string') this.logCache += x + '\n'
+			else if (x.type == 'flush') {
+				const log = this.logCache
+				this.logCache = ''
+				return log
+			}
 		}
 		sleep(second) {
 			return new Promise(wake => setTimeout(wake, second * 1000))
@@ -166,6 +182,20 @@
 				this.formUseLossyJpeg =
 					this.form.elements['jpeg-compress'].checked = true
 			}
+		}
+		handleReloadLastFiles() {
+			let fileList = this.form.elements['pdf-list'].files
+			fileList = Array.from(fileList)
+			fileList.reverse()
+			for (const f of fileList) {
+				const last = this.form.querySelector('ol>li:last-child')
+				const name = last.querySelector('summary').textContent
+				if (name == f.name) {
+					last.remove()
+					this.pdfList.pop()
+				}
+			}
+			return this.handleAdd()
 		}
 		async tiffToImage(buffer) {
 			const ifds = this.UTIF.decode(buffer)
@@ -201,11 +231,13 @@
 				lock = new Promise(ok => canvas.toBlob(async blob => {
 					const buffer = await blob.arrayBuffer()
 					imageList.push({buffer, type: canvasOption[0]})
-					log `blob-size ${i} ${blob.size}`
 					ok()
 				}, ...canvasOption))
 			}
 			await lock
+			let sizeAll = 0
+			log `size-list ${imageList.map(o => (sizeAll += o.buffer.byteLength) && o.buffer.byteLength).join(' ')}`
+			log `size-all ${sizeAll}`
 			return imageList
 		}
 		test(q) {
@@ -336,9 +368,14 @@
 			const field = this.form.elements['pdf-list']
 			const list = this.form.querySelector('ol')
 			for (const file of field.files) {
+				this.logWriteFile({type: 'flush'})
 				await this.addFile(file)
 				const item = document.createElement('li')
-				item.textContent = file.name
+				item.innerHTML = 
+					`<details open><summary></summary><pre></pre></details>`
+				item.querySelector('summary').textContent = file.name
+				const p = item.querySelector('pre')
+				p.textContent = this.logWriteFile({type: 'flush'})
 				list.appendChild(item)
 			}
 			
