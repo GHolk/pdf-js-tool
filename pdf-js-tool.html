@@ -375,30 +375,24 @@
 			}
 			
 			const range = await this.getRangeAll()
+			const rangeOld = this.rangeParse()
 			const textarea = this.form.elements['range']
-			let json
-			try {
-				json = JSON.parse(textarea.value)
-			}
-			catch (parseError) {
-				json = null
-			}
 			
-			if (json) {
-				while (json[0].length > json.length-1) {
-					json.push([])
+			if (rangeOld) {
+				while (rangeOld[0].length > rangeOld.length-1) {
+					rangeOld.push([])
 				}
 				const newPdfCount = field.files.length
-				json[0].push(...range[0].slice(-newPdfCount))
-				json.push(...range.slice(-newPdfCount))
-				textarea.value = this.prettyRange(json)
+				rangeOld[0].push(...range[0].slice(-newPdfCount))
+				rangeOld.push(...range.slice(-newPdfCount))
+				textarea.value = this.rangeStringify(rangeOld)
 				this.handleTextareaUpdate()
 			}
 		}
 		async handleUpdate() {
 			const field = this.form.elements['range']
 			const range = await this.getRangeAll()
-			const pretty = this.prettyRange(range)
+			const pretty = this.rangeStringify(range)
 			field.value = pretty
 			
 			this.handleTextareaUpdate()
@@ -409,12 +403,6 @@
 				!event.repeat && !event.isComposing
 			if (!isSubmit) return
 			return this.handleFormDisableWith('handleArrange')
-		}
-		prettyRange(json) {
-			let pretty = json.map(l => JSON.stringify(l))
-			pretty = pretty.join(',\n').replace(/^/mg, '\t')
-			pretty = `[\n${pretty}\n]`
-			return pretty
 		}
 		handleTextareaUpdate() {
 			const field = this.form.elements['range']
@@ -443,9 +431,22 @@
 			anchor.href = url
 			anchor.click()
 		}
+		rangeParse(str) {
+			if (!str) str = this.form.elements['range'].value
+			if (str.trim().charAt(0) == '[') return JSON.parse(str)
+			const line = str.split('\n')
+				.map(l => l.replace(/\+/g, ' ').trim())
+				.filter(Boolean)
+			return line.map(l => l.split(/\s+/).map(n => Number(n)))
+		}
+		rangeStringify(list) {
+			return list.map((l, i) => {
+				const s = l.join(' ')
+				return (i == 0) ? s : '  ' + s
+			}).join('\n')
+		}
 		async arrange() {
-			const json = this.form.elements['range'].value
-			const range = JSON.parse(json)
+			const range = this.rangeParse()
 			const docRange = range[0]
 			const pageRangeList = range.slice(1)
 			const all = await this.PDFLib.PDFDocument.create()
