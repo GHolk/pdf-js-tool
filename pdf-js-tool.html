@@ -79,6 +79,9 @@
 	<button type="button"
 		onclick="pdfTool.handleFormDisableWith('handleAdd')"
 	>re-add last files</button>
+	<button type="button"
+		onclick="pdfTool.removeOddPageHandler(event)"
+	>remove odd page</button>
 	<button type="button" draggable="true"
 		onclick="pdfTool.handleFormDisableWith('handleArrange', event)"
 		ondragstart="return false; // pdfTool.handleDragDownload()">
@@ -493,6 +496,26 @@
 				type: 'application/pdf'
 			})
 			data.setData('application/pdf', pdf)
+		}
+		removeOddPage(l) {
+			return l.filter((x,i) => i % 2 != 0)
+		}
+		removeOddPageHandler(event) {
+			const e = this.form['range']
+			const [start, end] = [e.selectionStart, e.selectionEnd]
+			if (start == end) {
+				const array = this.rangeParse()
+				for (let i=1; i<array.length; i++) {
+					array[i] = this.removeOddPage(array[i])
+				}
+				e.value = this.rangeStringify(array)
+			}
+			else {
+				let t = e.value.substring(start, end).trim()
+				let l = this.removeOddPage(t.trim().split(/\s+/))
+				t = ' ' + l.join(' ') + ' '
+				e.setRangeText(t, start, end)
+			}
 		}
 	}
 	var pdfTool = new PdfTool()
