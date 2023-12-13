@@ -49,6 +49,10 @@
 	form output[name=log] details summary:empty {
 		display: none;
 	}
+	form ol li {
+		width: fit-content;
+		cursor: pointer;
+	}
 	</style>
 </head>
   <body>
@@ -528,7 +532,9 @@
 		addIndexHandler(event) {
 			const e = this.form['range']
 			let [start, end] = [e.selectionStart, e.selectionEnd]
-			const i = event.target.value
+			const li = event.target
+			const ol = li.parentNode
+			const i = Array.from(ol.children).indexOf(li)
 			const nl1 = e.value.indexOf('\n')
 			if (nl1 != -1 && nl1 < start) start = end = nl1
 			e.setRangeText(` ${i} `, start, end)
