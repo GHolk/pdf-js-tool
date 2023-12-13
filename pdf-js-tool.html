@@ -377,6 +377,7 @@
 				await this.addFile(file)
 				const item = document.createElement('li')
 				item.textContent = file.name
+				item.onclick = e => this.addIndexHandler(e)
 				list.appendChild(item)
 			}
 			
@@ -447,7 +448,7 @@
 		}
 		rangeStringify(list) {
 			return list.map((l, i) => {
-				const s = l.join(' ')
+				const s = l.join(' ') + ' '
 				return (i == 0) ? s : '  ' + s
 			}).join('\n')
 		}
@@ -523,6 +524,14 @@
 		removeRangeSelection() {
 			this.form['range'].focus()
 			document.execCommand('delete')
+		}
+		addIndexHandler(event) {
+			const e = this.form['range']
+			let [start, end] = [e.selectionStart, e.selectionEnd]
+			const i = event.target.value
+			const nl1 = e.value.indexOf('\n')
+			if (nl1 != -1 && nl1 < start) start = end = nl1
+			e.setRangeText(` ${i} `, start, end)
 		}
 	}
 	var pdfTool = new PdfTool()
