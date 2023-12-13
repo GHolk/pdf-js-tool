@@ -82,6 +82,9 @@
 	<button type="button"
 		onclick="pdfTool.removeOddPageHandler(event)"
 	>remove odd page</button>
+	<button type="button"
+		onclick="pdfTool.removeRangeSelection()"
+	>delete text</button>
 	<button type="button" draggable="true"
 		onclick="pdfTool.handleFormDisableWith('handleArrange', event)"
 		ondragstart="return false; // pdfTool.handleDragDownload()">
@@ -516,6 +519,10 @@
 				t = ' ' + l.join(' ') + ' '
 				e.setRangeText(t, start, end)
 			}
+		}
+		removeRangeSelection() {
+			this.form['range'].focus()
+			document.execCommand('delete')
 		}
 	}
 	var pdfTool = new PdfTool()
