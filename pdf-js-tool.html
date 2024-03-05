@@ -508,7 +508,7 @@ which from page 1-2, 3-5, 6-9 of arrange pdf.</p>
 				URL.revokeObjectURL(anchor.href)
 			}
 			anchor.href = url
-			anchor.download = 'arrange.pdf'
+			anchor.removeAttribute('download')
 			anchor.click()
 		}
 		rangeParse(str) {
